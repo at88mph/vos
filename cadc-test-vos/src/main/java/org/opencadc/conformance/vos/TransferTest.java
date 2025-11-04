@@ -76,8 +76,10 @@ import ca.nrc.cadc.net.FileContent;
 import ca.nrc.cadc.net.HttpGet;
 import ca.nrc.cadc.net.HttpPost;
 import ca.nrc.cadc.net.HttpUpload;
+import ca.nrc.cadc.net.PreconditionFailedException;
 import ca.nrc.cadc.reg.Standards;
 import ca.nrc.cadc.reg.client.RegistryClient;
+import ca.nrc.cadc.util.HexUtil;
 import ca.nrc.cadc.uws.ExecutionPhase;
 import ca.nrc.cadc.uws.Job;
 import ca.nrc.cadc.uws.JobReader;
@@ -90,6 +92,8 @@ import java.io.StringWriter;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
+import java.security.MessageDigest;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -182,7 +186,6 @@ public class TransferTest extends VOSTest {
         URL putURL = null;
         for (Protocol p : details.getProtocols()) {
             String endpoint = p.getEndpoint();
-            log.info("PUT endpoint: " + endpoint);
             try {
 
                 URL u = new URL(endpoint);
@@ -198,13 +201,35 @@ public class TransferTest extends VOSTest {
         // put the bytes
         Random rnd = new Random();
         byte[] data = new byte[1024];
+        long datalen = (long) data.length;
         rnd.nextBytes(data);
+        MessageDigest md5 = MessageDigest.getInstance("MD5");
+        md5.update(data);
+        URI digestURI = URI.create("md5:" + HexUtil.toHex(md5.digest()));
+        
+        // attempt to put with checksum mismatches
+        rnd.nextBytes(data);
+        log.info("PUT: " + putURL + " " + digestURI);
         FileContent content = new FileContent(data, "application/octet-stream");
         HttpUpload put = new HttpUpload(content, putURL);
+        put.setDigest(digestURI);
         put.run();
-        log.info("put: " + put.getResponseCode() + " " + put.getThrowable());
+        log.info("put reject: " + put.getResponseCode() + " " + put.getThrowable() + " " + put.getDigest());
+        Assert.assertEquals(412, put.getResponseCode());
+        Assert.assertEquals(PreconditionFailedException.class, put.getThrowable().getClass());
+        
+        // now put data with correct checksum
+        md5.reset();
+        md5.update(data);
+        digestURI = URI.create("md5:" + HexUtil.toHex(md5.digest()));
+        content = new FileContent(data, "application/octet-stream");
+        put = new HttpUpload(content, putURL);
+        put.setDigest(digestURI);
+        put.run();
+        log.info("put accept: " + put.getResponseCode() + " " + put.getThrowable() + " " + put.getDigest());
         Assert.assertEquals(201, put.getResponseCode());
         Assert.assertNull(put.getThrowable());
+        Assert.assertEquals(digestURI, put.getDigest());
 
         // Create a pull-from-vospace Transfer for the node
         Transfer pullTransfer = new Transfer(testURI, Direction.pullFromVoSpace);

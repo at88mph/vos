@@ -72,6 +72,7 @@ import ca.nrc.cadc.io.ByteCountOutputStream;
 import ca.nrc.cadc.io.ByteLimitExceededException;
 import ca.nrc.cadc.io.MultiBufferIO;
 import ca.nrc.cadc.io.WriteException;
+import ca.nrc.cadc.net.PreconditionFailedException;
 import ca.nrc.cadc.net.ResourceNotFoundException;
 import ca.nrc.cadc.net.TransientException;
 import ca.nrc.cadc.rest.InlineContentException;
@@ -244,7 +245,7 @@ public class PutAction extends FileAction {
                 log.debug("upload corrupt: " + expectedMD5 + " != " + propValue);
                 OutputStream trunc = Files.newOutputStream(target, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING);
                 trunc.close();
-                actualMD5 = null;
+                throw new PreconditionFailedException("checksum mismatch: " + expectedMD5 + " != " + actualMD5);
             }
 
             // re-read node from filesystem
@@ -314,11 +315,6 @@ public class PutAction extends FileAction {
         } finally {
             if (bytesWritten > 0L) {
                 logInfo.setBytes(bytesWritten);
-            }
-            if (successful) {
-                log.debug("put: done " + nodeURI.getURI().toASCIIString());
-            } else if (putStarted) {
-                cleanupOnFailure(target, node);
             }
         }
     }

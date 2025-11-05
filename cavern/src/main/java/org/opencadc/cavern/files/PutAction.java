@@ -220,16 +220,15 @@ public class PutAction extends FileAction {
             InputStream in = (InputStream) syncInput.getContent(INPUT_STREAM);
             MessageDigest md = MessageDigest.getInstance("MD5");
             log.debug("copy: start " + target);
-            putStarted = true;
-            // this method replace sthe existing Node with a new one owned by the tomcat user (root)
-            // and that only gets fixed down at nodePersistence.put(node);
-            //Files.copy(vis, target, StandardCopyOption.REPLACE_EXISTING);
-
+            
+            
             // truncate: do not recreate file with wrong owner
             StandardOpenOption openOption = StandardOpenOption.TRUNCATE_EXISTING;
             DigestOutputStream out = new DigestOutputStream(
                 Files.newOutputStream(target, StandardOpenOption.WRITE, openOption), md);
             ByteCountOutputStream bcos = new ByteCountOutputStream(out);
+            
+            putStarted = true;
             MultiBufferIO io = new MultiBufferIO();
             io.copy(in, bcos);
             bcos.flush();
@@ -247,7 +246,8 @@ public class PutAction extends FileAction {
                 trunc.close();
                 throw new PreconditionFailedException("checksum mismatch: " + expectedMD5 + " != " + actualMD5);
             }
-
+            successful = true;
+            
             // re-read node from filesystem
             node = (DataNode) nodePersistence.get(cn, nodeURI.getName());
 
@@ -284,7 +284,9 @@ public class PutAction extends FileAction {
                 }
             }
 
+            // update node props
             nodePersistence.put(node);
+            
             syncOutput.setHeader("content-length", 0); // empty response
             if (contentType != null) {
                 syncOutput.setHeader("content-type", contentType);
@@ -294,7 +296,7 @@ public class PutAction extends FileAction {
                 syncOutput.setDigest(actualMD5);
             }
             syncOutput.setCode(201);
-            successful = true;
+            
         } catch (AccessDeniedException e) {
             // TODO: this is a deployment error because cavern doesn't have permission to filesystem
             log.debug("403 error with PUT: ", e);
@@ -316,40 +318,21 @@ public class PutAction extends FileAction {
             if (bytesWritten > 0L) {
                 logInfo.setBytes(bytesWritten);
             }
+            if (!successful && putStarted) {
+                cleanupOnFailure(target, node);
+            }
         }
     }
 
     private void cleanupOnFailure(Path target, DataNode node) {
         log.debug("clean up on put failure " + target);
-        if (node != null) {
+        if (target != null) {
             try {
-                nodePersistence.delete(node);
-            } catch (TransientException bug) {
+                OutputStream trunc = Files.newOutputStream(target, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING);
+                trunc.close();
+            } catch (IOException bug) {
                 log.error("Unable to clean up " + target + "\n" + bug.getMessage(), bug);
             }
         }
     }
-    
-    /*
-    private void cleanUpOnFailure(Path target, DataNode node, Path rootPath) throws IOException {
-        log.debug("clean up on put failure " + target);
-        Files.delete(target);
-        // restore empty DataNode: remove props that are no longer applicable
-        NodeProperty npToBeRemoved = node.findProperty(VOS.PROPERTY_URI_CONTENTMD5);
-        node.getProperties().remove(npToBeRemoved);
-        try {
-            nodePersistence.put(node);
-        } catch (NodeNotSupportedException bug) {
-            throw new RuntimeException("BUG: unexpected " + bug, bug);
-        }
-        return;
-    }
-    
-    private void restoreOwnNGroup(Path rootPath, Node node) throws IOException {
-        PosixPrincipal pp = NodeUtil.getOwner(node);
-        Integer gid = NodeUtil.getDefaultGroup(pp);
-        Path target = NodeUtil.nodeToPath(rootPath, node);
-        NodeUtil.setPosixOwnerGroup(target, pp.getUidNumber(), gid);
-    }
-    */
 }

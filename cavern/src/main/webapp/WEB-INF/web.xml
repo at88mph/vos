@@ -218,20 +218,6 @@
         <load-on-startup>3</load-on-startup>
     </servlet>
 
-    <!-- VOSpace ViewsServlet -->
-    <servlet>
-        <servlet-name>ViewsServlet</servlet-name>
-        <servlet-class>org.restlet.ext.servlet.ServerServlet</servlet-class>
-
-        <init-param>
-        <param-name>org.restlet.application</param-name>
-        <param-value>ca.nrc.cadc.vos.server.web.restlet.ViewsApplication
-        </param-value>
-        </init-param>
-
-        <load-on-startup>4</load-on-startup>
-    </servlet>
-
     <!-- VOSI availability -->
     <servlet>
         <servlet-name>AvailabilityServlet</servlet-name>
@@ -274,11 +260,6 @@
     <servlet-mapping>
         <servlet-name>NodesServlet</servlet-name>
         <url-pattern>/nodes/*</url-pattern>
-    </servlet-mapping>
-
-    <servlet-mapping>
-        <servlet-name>ViewsServlet</servlet-name>
-        <url-pattern>/views</url-pattern>
     </servlet-mapping>
 
     <servlet-mapping>
